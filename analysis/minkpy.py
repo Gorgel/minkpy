@@ -1,4 +1,5 @@
-from __future__ import division
+#importing dependencies
+from __future__ import division     #enable division in python 2.7
 import numpy as np
 import scipy as sp
 import matplotlib.pyplot as plt
@@ -19,6 +20,11 @@ def mink(input_array, box_size, nr_bins, low, high, output_array):
          ctypes.c_void_p(output_array.ctypes.data))
 
     return output_array
+
+
+############################################################
+# defining functions to use in the minkowski_python function
+############################################################
 
 #defining smoothing function
 def smoothing_function(input_array, sigma):
@@ -56,6 +62,7 @@ def complement(input_array):
 
     return input_array
 
+#defines function that creates gaussian noise cube
 def gaussian_noise(size, mean, std, smoothing, x, y, z):
         
         print 'create noise array with std = ' + str(std) + ' and mean = ' + str(mean) 
@@ -70,17 +77,12 @@ def gaussian_noise(size, mean, std, smoothing, x, y, z):
 
         return new_random_field
 
+#defines function that adds the noise cube
 def add_gaussian_noise(input_array, noise_array):
 
     return (input_array+noise_array)
 
-# subtracts mean
-def subtract_mean(input_array):
-    input_array = input_array - np.mean(input_array)
-    
-    return input_array
-
-#saves image to 
+#defines function that saves images
 def save_image(input_array, z, name, filename):
 
     plt.imshow(input_array[256,:,:], interpolation='none')
@@ -99,6 +101,10 @@ def save_image(input_array, z, name, filename):
     plt.clf()
 
 
+#####################################################################
+# some preperatory steps before running the minkowski_python function
+#####################################################################
+
 #load redshifts from file
 with open ('../redshift_files/xfrac_redshifts.txt', "r") as myfile:
     redshifts=myfile.read().splitlines()
@@ -114,10 +120,11 @@ indexes = sp.where( (np.array([float(z) for z in redshifts]) <= z_upper_limit) &
 #use the above indexes to select the desired redhifts
 redshifts = redshifts[indexes[0][0]:indexes[0][-1] +1]
 
-# load aditional data
+# load aditional data (global ion fraction etc.)
 xfracs = np.loadtxt('../minkowski_files/global_ion_fraction.dat'
                   ,usecols = (0,1,2,3,4))
 
+#store information in variables
 xfracs = xfracs[:,:][0:len(redshifts)]
 ion_frac_vol = xfracs[:,1][::-1]      # average ionization fraction of all cells per volume
 ion_frac_mass = xfracs[:,2][::-1]     # average ionization fraction of all cells per mass
@@ -131,17 +138,20 @@ os.mkdir(data_filename + '_images')
 #create dictionary object to store output data
 data_dict = {}
 
-#create noise array
-#noise_array = gaussian_noise(size=600, mean=0, std=10, smoothing=10, x=10, y=10, z=10)
-noise_array = None
+#create noise array. Comment/uncomment depending on choice
+noise_array = gaussian_noise(size=600, mean=0, std=10, smoothing=10, x=10, y=10, z=10)
+#noise_array = None
 
+##############################################
 # defining the multiprocess minkowski function
+##############################################
+
 def minkowski_python(z,i, noise_array, data_filename):
     
     # create local dictionary object
     local_data_dict = {}
 
-    # the data we want to analyse, a 3D array of floats
+    # the data we want to analyse, a 3D array of floats. Comment/uncomment depending on format
     #input_array = c2t.read_cbin('/media/gorgel/My Passport 3/simon_master/dT_' + str(z) + '.cbin')                   #cbin format
                                                                                              
     input_array = c2t.XfracFile('/media/gorgel/My Passport 3/simon_master/xfrac3d_' + str(z) + '.bin')               # bin format
@@ -155,9 +165,9 @@ def minkowski_python(z,i, noise_array, data_filename):
     #input_array = add_gaussian_noise(input_array, noise_array)      #add noise
     #input_array = z_correction(input_array, z)                              #remove z.dependence
     #save_image(input_array, z, 'noise', data_filename)
-    input_array = smoothing_function(input_array, sigma=4)                   #smooth data
+    #input_array = smoothing_function(input_array, sigma=4)                   #smooth data
     #save_image(input_array, z, 'smth', data_filename)
-    input_array = remove_edge(input_array, 10, 10, 10)
+    #input_array = remove_edge(input_array, 10, 10, 10)
     #save_image(input_array, z, 'edge', data_filename)
     #input_array = subtract_mean(input_array)
     #input_array = complement(input_array)                                   #calculate on complementary field
@@ -167,7 +177,7 @@ def minkowski_python(z,i, noise_array, data_filename):
     size_array = len(input_array)
     box_dimensions = np.array([size_array, size_array , size_array])        # the size of the data we want to analyse, a 1D array of three integers (same as the -x -y -z options)
     nr_bins = int(65)                               # integer: number of bins to use (same as -b option)
-    low = float(0)                                  #float: lowest value of threshold (same as -l option)
+    low = float(0)                                  # float: lowest value of threshold (same as -l option)
     high = float(1)                                # float: highest values of threshold (same as -h option)
     output_array = np.zeros((2,nr_bins+1,5), dtype=np.float32)      #output array, (koenderink+crofton, number of bins +1, 5 = th,V0,V1,V2,V3)
 
@@ -185,8 +195,12 @@ def minkowski_python(z,i, noise_array, data_filename):
 
     return local_data_dict
 
-#define number of cores for multiprocess
+
+
+#define number of cores for multiprocess. processes is the number of cores you want to distribute the work over
 pool = mp.Pool(processes=2,maxtasksperchild=1)
+
+# starts the minkowski miltiprocess function and saves result
 results = [pool.apply_async(minkowski_python, args=(z, i, noise_array, data_filename)) for z,i in zip(redshifts, range(0,len(redshifts)))]
 outputs = [p.get() for p in results]
 
@@ -194,6 +208,6 @@ outputs = [p.get() for p in results]
 for output in outputs:
 	data_dict.update(output)
 
-#save data to file (pickeld binary)
+#save data to file (pickeld binary that can be opened with the pickle module)
 with open(data_filename + '.pkl', 'wb') as outfile:
     pickle.dump(data_dict, outfile, pickle.HIGHEST_PROTOCOL)
